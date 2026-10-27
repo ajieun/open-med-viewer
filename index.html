@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenMed Viewer - 全能通用医学影像阅片器</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body, html {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #030712;
+        color: #f3f4f6;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      #app-container {
+        display: flex;
+        flex-direction: column;
+        width: 100vw;
+        height: 100vh;
+      }
+      /* 顶部导航与框架切换条 */
+      .app-header-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #0f172a;
+        padding: 0 16px;
+        height: 44px;
+        border-bottom: 1px solid #1e293b;
+        font-size: 13px;
+        z-index: 20;
+      }
+      .brand-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 700;
+        font-size: 15px;
+        color: #00e5ff;
+        letter-spacing: -0.02em;
+      }
+      .nav-tabs {
+        display: flex;
+        gap: 6px;
+      }
+      .nav-tab-btn {
+        background: transparent;
+        color: #94a3b8;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 5px 12px;
+        font-size: 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+      }
+      .nav-tab-btn:hover {
+        color: #f8fafc;
+        background: #1e293b;
+      }
+      .nav-tab-btn.active {
+        color: #00e5ff;
+        background: rgba(0, 229, 255, 0.1);
+        border-color: rgba(0, 229, 255, 0.4);
+      }
+      .badge-tag {
+        background: #0284c7;
+        color: #fff;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 600;
+      }
+      /* 阅片器主容器 */
+      #viewer-mount-point {
+        flex: 1;
+        width: 100%;
+        height: calc(100vh - 44px);
+        position: relative;
+      }
+      /* 代码指南弹层/抽屉 */
+      .code-modal-overlay {
+        position: fixed;
+        top: 44px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(3, 7, 18, 0.85);
+        backdrop-filter: blur(8px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 50;
+        padding: 20px;
+      }
+      .code-modal-card {
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 12px;
+        width: 860px;
+        max-width: 95vw;
+        max-height: 85vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      }
+      .code-modal-header {
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #1e293b;
+      }
+      .code-modal-body {
+        padding: 20px;
+        overflow-y: auto;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #cbd5e1;
+      }
+      pre {
+        background: #020617;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        padding: 14px;
+        overflow-x: auto;
+        font-family: 'JetBrains Mono', Consolas, monospace;
+        font-size: 12px;
+        margin: 12px 0;
+        color: #38bdf8;
+      }
+      .copy-btn {
+        background: #1e293b;
+        border: 1px solid #334155;
+        color: #cbd5e1;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .copy-btn:hover {
+        background: #0284c7;
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app-container">
+      <!-- 顶部演示控制与框架代码切换导航 -->
+      <header class="app-header-nav">
+        <div class="brand-title">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="2.2">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+          <span>OpenMed Viewer</span>
+          <span class="badge-tag">v1.0.0</span>
+          <span style="font-size: 11px; color: #64748b; font-weight: 400; margin-left: 8px;">兼容 Vue3 / React / 全云存储适配器</span>
+        </div>
+
+        <nav class="nav-tabs">
+          <button class="nav-tab-btn active" id="tab-live-viewer">
+            <span>🔬 实时医学阅片器</span>
+          </button>
+          <button class="nav-tab-btn" id="tab-vue-guide">
+            <span>🟢 Vue 3 接入代码</span>
+          </button>
+          <button class="nav-tab-btn" id="tab-react-guide">
+            <span>⚛️ React 接入代码</span>
+          </button>
+          <button class="nav-tab-btn" id="tab-npm-guide">
+            <span>📦 NPM 安装使用指南</span>
+          </button>
+        </nav>
+      </header>
+
+      <!-- 阅片器挂载点 -->
+      <main id="viewer-mount-point"></main>
+
+      <!-- 代码与集成指南弹窗 -->
+      <div class="code-modal-overlay" id="code-modal">
+        <div class="code-modal-card">
+          <div class="code-modal-header">
+            <h3 id="modal-title" style="color: #00e5ff; font-size: 16px; font-weight: 600;">代码集成范例</h3>
+            <span id="close-guide-btn" style="color: #94a3b8; font-size: 20px; cursor: pointer;">✕</span>
+          </div>
+          <div class="code-modal-body" id="modal-content"></div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

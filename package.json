@@ -1,0 +1,78 @@
+{
+  "name": "@open-med/viewer",
+  "version": "1.0.0",
+  "description": "Framework-agnostic universal medical imaging viewer compatible with Vue 3, React and standard Web, with Huawei Cloud OBS, Aliyun OSS, MinIO/S3, DICOMweb and Local file adapters.",
+  "type": "module",
+  "main": "./dist/open-med-viewer.cjs",
+  "module": "./dist/open-med-viewer.es.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/open-med-viewer.es.js",
+      "require": "./dist/open-med-viewer.cjs"
+    },
+    "./vue": {
+      "types": "./dist/types/vue/index.d.ts",
+      "import": "./dist/vue/index.js"
+    },
+    "./react": {
+      "types": "./dist/types/react/index.d.ts",
+      "import": "./dist/react/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "react": ">=17",
+    "react-dom": ">=17",
+    "vue": ">=3"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && vite build --config vite.subpath.config.ts && tsc --emitDeclarationOnly && node scripts/copy-wasm.mjs",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "dicom",
+    "medical-imaging",
+    "viewer",
+    "pacs",
+    "dicomweb",
+    "vue3",
+    "react",
+    "huawei-obs",
+    "aliyun-oss",
+    "minio",
+    "ct",
+    "mri"
+  ],
+  "author": "Antigravity OpenMed Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0"
+  },
+  "dependencies": {
+    "@cornerstonejs/core": "^5.13.2",
+    "@cornerstonejs/dicom-image-loader": "^5.13.2",
+    "@cornerstonejs/tools": "^5.13.2",
+    "@kitware/vtk.js": "^37.4.6",
+    "dcmjs": "^0.51.1",
+    "dicom-parser": "^1.8.21"
+  }
+}

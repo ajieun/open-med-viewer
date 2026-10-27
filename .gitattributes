@@ -1,0 +1,12 @@
+# 统一文本文件换行，避免 Windows / macOS / Linux 混合提交
+* text=auto eol=lf
+
+# 明确按二进制处理的资源
+*.wasm binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
