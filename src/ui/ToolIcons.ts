@@ -46,6 +46,14 @@ export const TOOL_ICONS: Record<string, string> = {
   // 箭头标注
   arrow: '<path d="M4 20L20 4" /><path d="M13.5 4H20v6.5" />',
 
+  // 删除标注（橡皮擦）
+  eraser:
+    '<path d="M14.5 4.5l5 5-8.5 8.5H6.5l-2-2z" /><path d="M8.5 9.5l6 6" /><path d="M7 21h13" />',
+
+  // 清空标注（垃圾桶）
+  clearMeasurements:
+    '<path d="M4 7h16" /><path d="M9.5 7V4.5h5V7" /><path d="M6.5 7l1 13h9l1-13" /><path d="M10.5 11v5.5M13.5 11v5.5" />',
+
   // 数据源 / 云
   cloudSource: '<path d="M7 18a4 4 0 010-8 5.5 5.5 0 0110.4-1.6A3.9 3.9 0 0117.5 18z" /><path d="M12 11v5M9.5 13.5L12 11l2.5 2.5" />',
 

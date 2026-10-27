@@ -80,11 +80,25 @@ export class ToolManager {
     // 切换工具时丢弃未完成的绘制
     this.cancel();
 
+    // 浏览 / 删除 属于交互模式而非绘制工具，不注册在 tools 中
+    if (type === 'none' || type === 'eraser') {
+      this.activeToolType = type;
+      this.viewport.getCanvas().style.cursor = this.defaultCursor();
+      return;
+    }
+
     if (this.tools.has(type)) {
       this.activeToolType = type;
       const tool = this.tools.get(type)!;
       this.viewport.getCanvas().style.cursor = tool.cursor;
     }
+  }
+
+  /** 当前交互模式的基础光标 */
+  private defaultCursor(): string {
+    if (this.activeToolType === 'eraser') return 'crosshair';
+    if (this.activeToolType === 'none') return 'default';
+    return this.getActiveTool()?.cursor || 'default';
   }
 
   getActiveTool(): BaseTool | undefined {
@@ -115,6 +129,18 @@ export class ToolManager {
     if (kind === 'tool') {
       // 优先拾取已有测量 -> 进入编辑
       const hit = this.pickMeasurement(imgPoint);
+
+      // 删除模式：点中即删除，不进入编辑
+      if (this.activeToolType === 'eraser') {
+        if (hit) {
+          this.viewport.removeMeasurement(hit.measurement.id);
+          this.viewport.setSelectedMeasurement(null);
+          this.viewport.setHoveredMeasurement(null);
+          this.hoveredId = null;
+        }
+        return true;
+      }
+
       if (hit) {
         this.gesture.kind = 'edit';
         this.gesture.edit = {
@@ -178,11 +204,14 @@ export class ToolManager {
         needsRender = true;
       }
 
-      const cursor = hit
-        ? hit.handleIndex !== null
-          ? 'nwse-resize'
-          : 'move'
-        : tool?.cursor || 'default';
+      let cursor: string;
+      if (this.activeToolType === 'eraser') {
+        cursor = hit ? 'pointer' : 'crosshair';
+      } else if (hit) {
+        cursor = hit.handleIndex !== null ? 'nwse-resize' : 'move';
+      } else {
+        cursor = this.defaultCursor();
+      }
       if (this.viewport.getCanvas().style.cursor !== cursor) {
         this.viewport.getCanvas().style.cursor = cursor;
       }
@@ -242,7 +271,7 @@ export class ToolManager {
     } else if (g.kind === 'pan') {
       this.tools.get('pan')?.onMouseUp(e, imgPoint, this.viewport);
     } else if (g.kind === 'zoom') {
-      this.viewport.getCanvas().style.cursor = this.getActiveTool()?.cursor || 'default';
+      this.viewport.getCanvas().style.cursor = this.defaultCursor();
     } else if (g.kind === 'tool') {
       this.getActiveTool()?.onMouseUp(e, imgPoint, this.viewport);
     } else if (g.kind === 'edit' && g.edit) {

@@ -44,7 +44,16 @@ export class OpenMedViewer {
 
   private cineSlider: HTMLInputElement | null = null;
   private cineInfoLabel: HTMLElement | null = null;
-  private btn3D: HTMLElement | null = null;
+  private btn3D: HTMLButtonElement | null = null;
+  private btnInvert: HTMLButtonElement | null = null;
+  private btnFlipH: HTMLButtonElement | null = null;
+
+  /** 交互工具按钮（与 ToolType 一一对应，用于同步高亮） */
+  private toolButtons: Map<ToolType, HTMLButtonElement> = new Map();
+  /** 当前工具提示文案 */
+  private toolHint: HTMLElement | null = null;
+  /** 状态型按钮缓存，避免重复写 DOM */
+  private toggleStateCache = { invert: false, flipH: false, is3D: false };
 
   // DOM 元素引用
   private uiRoot!: HTMLElement;
@@ -73,9 +82,9 @@ export class OpenMedViewer {
     if (options.initialLayout) {
       this.layoutManager.setLayout(options.initialLayout);
     }
-    if (options.initialTool) {
-      this.setActiveTool(options.initialTool);
-    }
+
+    // 始终显式应用一次初始工具：未指定时统一为「浏览」，保证工具栏高亮与实际交互一致
+    this.setActiveTool(options.initialTool ?? 'none');
 
     // 初始化默认数据源或合成演示序列
     const config = options.initialConfig || { type: 'syntheticDemo', sliceCount: 16 };
@@ -94,6 +103,10 @@ export class OpenMedViewer {
 
   setLayout(layout: ViewportLayout): void {
     this.layoutManager.setLayout(layout);
+
+    // 排版会重建全部视口，新视口的工具会回到默认值，需要重新应用当前工具
+    this.layoutManager.setActiveTool(this.activeTool);
+
     if (this.currentImages.length > 0) {
       this.layoutManager.setImagesForAll(this.currentImages);
       const group = this.seriesGroups[this.activeSeriesIndex];
@@ -102,6 +115,9 @@ export class OpenMedViewer {
       this.updateCineSlider();
       this.updateSliceScrollbar();
     }
+
+    this.updateMeasurementsList();
+    this.updateToolbarActiveState();
   }
 
   /**
@@ -323,32 +339,51 @@ export class OpenMedViewer {
     `;
 
     const leftTools = document.createElement('div');
-    leftTools.style.cssText = 'display: flex; align-items: center; gap: 4px; flex-wrap: nowrap;';
+    leftTools.className = 'med-toolbar-tools';
+    leftTools.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: nowrap;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+    `;
 
     // 数据源配置按钮
-    const cloudBtn = this.createToolButton('☁️ 影像数据源', 'cloudSource', () => {
+    const cloudBtn = this.createToolButton('影像数据源', 'cloudSource', () => {
       this.openCloudModal();
-    }, true);
-    cloudBtn.style.background = 'linear-gradient(135deg, #0284c7, #0369a1)';
-    cloudBtn.style.color = '#ffffff';
+    }, { variant: 'primary' });
 
-    // 常用工具列表
-    const btnPointer = this.createToolButton('浏览', 'none', () => this.setActiveTool('none'));
-    const btnWL = this.createToolButton('调窗', 'windowLevel', () => this.setActiveTool('windowLevel'));
-    const btnPan = this.createToolButton('平移', 'pan', () => this.setActiveTool('pan'));
-    const btnZoom = this.createToolButton('缩放', 'zoom', () => this.setActiveTool('zoom'));
-    const btnRot = this.createToolButton('旋转90°', 'rotate90', () => this.getActiveViewport().rotate90());
-    const btnFlipH = this.createToolButton('水平翻转', 'flipH', () => this.getActiveViewport().toggleFlipH());
-    const btnInvert = this.createToolButton('负片反相', 'invert', () => this.getActiveViewport().toggleInvert());
-    const btnReset = this.createToolButton('重置', 'reset', () => this.getActiveViewport().resetView());
+    // 交互模式（互斥，同一时刻只有一个处于激活态）
+    const toolDefs: Array<[ToolType, string, string]> = [
+      ['none', '浏览', '拖动可选择 / 移动已有标注，不会产生新标注'],
+      ['windowLevel', '调窗', '左键拖动调整窗宽窗位'],
+      ['pan', '平移', '左键拖动平移图像'],
+      ['zoom', '缩放', '左键上下拖动缩放'],
+      ['length', '测距', '拖动绘制直线，按 PixelSpacing 计算 mm'],
+      ['angle', '角度', '三次点击测量夹角'],
+      ['rectangleRoi', '矩形', '拖动画矩形 ROI，统计面积与 HU'],
+      ['ellipseRoi', '椭圆', '拖动画椭圆 ROI，统计面积与 HU'],
+      ['probe', '探针', '点击读取该点 HU 值'],
+      ['arrow', '箭头', '拖动画箭头指向病灶'],
+      ['eraser', '删除', '点击任意标注即可删除（也可按 Delete 删除选中项）']
+    ];
 
-    // 测量工具
-    const btnLen = this.createToolButton('测距 (mm)', 'length', () => this.setActiveTool('length'));
-    const btnAng = this.createToolButton('角度', 'angle', () => this.setActiveTool('angle'));
-    const btnRect = this.createToolButton('矩形ROI', 'rectangleRoi', () => this.setActiveTool('rectangleRoi'));
-    const btnEllip = this.createToolButton('椭圆ROI', 'ellipseRoi', () => this.setActiveTool('ellipseRoi'));
-    const btnProbe = this.createToolButton('探针 (HU)', 'probe', () => this.setActiveTool('probe'));
-    const btnArrow = this.createToolButton('箭头', 'arrow', () => this.setActiveTool('arrow'));
+    // 一次性动作（不参与激活态高亮），使用图标按钮节省空间
+    const btnRot = this.createToolButton('旋转 90°', 'rotate90', () => this.getActiveViewport().rotate90(), { iconOnly: true });
+    const btnFlipH = this.createToolButton('水平翻转 (H)', 'flipH', () => this.getActiveViewport().toggleFlipH(), { iconOnly: true });
+    const btnInvert = this.createToolButton('负片反相 (I)', 'invert', () => this.getActiveViewport().toggleInvert(), { iconOnly: true });
+    const btnReset = this.createToolButton('重置视图 (R)', 'reset', () => this.getActiveViewport().resetView(), { iconOnly: true });
+    this.btnFlipH = btnFlipH;
+    this.btnInvert = btnInvert;
+
+    // 标注管理
+    const btnClear = this.createToolButton('清空标注', 'clearMeasurements', () => this.clearAllMeasurements(), {
+      variant: 'danger'
+    });
 
     // 窗宽窗位预设下拉框
     const presetSelect = document.createElement('select');
@@ -400,73 +435,110 @@ export class OpenMedViewer {
     });
 
     // 3D VTK 重建模式切换按钮
-    const btn3D = this.createToolButton('3D 重建', 'vtk3d', () => {
+    const btn3D = this.createToolButton('3D 体积重建', 'vtk3d', () => {
       this.toggle3DVtkMode(btn3D);
-    });
-    btn3D.style.background = '#6366f1';
-    btn3D.style.color = '#ffffff';
+    }, { variant: 'accent', iconOnly: true });
     this.btn3D = btn3D;
 
     // 快照导出按钮
     const exportBtn = this.createToolButton('导出截图', 'export', () => {
       ImageExporter.exportViewportImage(this.getActiveViewport());
-    });
+    }, { iconOnly: true });
 
+    // 工具分组：数据源 | 交互模式 | 视图变换 | 测量 | 标注管理 | 预设 / 3D / 导出
     leftTools.appendChild(cloudBtn);
     leftTools.appendChild(this.createDivider());
-    leftTools.appendChild(btnPointer);
-    leftTools.appendChild(btnWL);
-    leftTools.appendChild(btnPan);
-    leftTools.appendChild(btnZoom);
+    toolDefs.forEach(([tool, label, hint], idx) => {
+      const btn = this.createToolButton(label, tool, () => this.setActiveTool(tool));
+      btn.dataset.hint = hint;
+      this.toolButtons.set(tool, btn);
+      leftTools.appendChild(btn);
+      // 在「浏览/调窗/平移/缩放」与「测量工具」之间加分隔线
+      if (idx === 3) leftTools.appendChild(this.createDivider());
+    });
+    leftTools.appendChild(btnClear);
+    leftTools.appendChild(this.createDivider());
     leftTools.appendChild(btnRot);
     leftTools.appendChild(btnFlipH);
     leftTools.appendChild(btnInvert);
     leftTools.appendChild(btnReset);
     leftTools.appendChild(this.createDivider());
-    leftTools.appendChild(btnLen);
-    leftTools.appendChild(btnAng);
-    leftTools.appendChild(btnRect);
-    leftTools.appendChild(btnEllip);
-    leftTools.appendChild(btnProbe);
-    leftTools.appendChild(btnArrow);
-    leftTools.appendChild(this.createDivider());
     leftTools.appendChild(this.wrapWithIcon('preset', presetSelect));
     leftTools.appendChild(this.wrapWithIcon('colormap', colormapSelect));
     leftTools.appendChild(this.wrapWithIcon('layout', layoutSelect));
     leftTools.appendChild(btn3D);
-    leftTools.appendChild(this.createDivider());
     leftTools.appendChild(exportBtn);
+
+    // 右侧状态提示：当前模式 + 快捷键
+    const statusArea = document.createElement('div');
+    statusArea.style.cssText = 'display: flex; align-items: center; gap: 10px; flex: 0 0 auto; font-size: 11px;';
+
+    const hintEl = document.createElement('span');
+    hintEl.className = 'med-tool-hint';
+    hintEl.style.cssText = 'color: #38bdf8; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+    this.toolHint = hintEl;
+
+    const keyHint = document.createElement('span');
+    keyHint.style.cssText = 'color: #475569; white-space: nowrap;';
+    keyHint.textContent = 'Delete 删除 · Esc 取消';
+
+    statusArea.appendChild(hintEl);
+    statusArea.appendChild(keyHint);
 
     this.topToolbar.appendChild(brand);
     this.topToolbar.appendChild(leftTools);
+    this.topToolbar.appendChild(statusArea);
+
+    // 初始化高亮，保证首次进入时工具栏与实际交互模式一致
+    this.updateToolbarActiveState();
   }
 
-  private createToolButton(label: string, id: string, onClick: () => void, isHighlight: boolean = false): HTMLButtonElement {
+  private createToolButton(
+    label: string,
+    id: string,
+    onClick: () => void,
+    opts: { variant?: 'default' | 'primary' | 'accent' | 'danger'; iconOnly?: boolean } = {}
+  ): HTMLButtonElement {
+    const variant = opts.variant || 'default';
+    const palette = {
+      default: { bg: '#1f2937', color: '#cbd5e1', border: '#374151' },
+      primary: { bg: '#0284c7', color: '#ffffff', border: '#0369a1' },
+      accent: { bg: '#6366f1', color: '#ffffff', border: '#4f46e5' },
+      danger: { bg: '#1f2937', color: '#f87171', border: '#7f1d1d' }
+    }[variant];
+
     const btn = document.createElement('button');
     btn.className = `med-tool-btn tool-${id}`;
     btn.title = label;
+    // 记录基础配色，供 hover / 激活态还原使用
+    btn.dataset.baseBg = palette.bg;
+    btn.dataset.baseColor = palette.color;
+    btn.dataset.baseBorder = palette.border;
+
     const icon = createIcon(id, 14);
-    btn.innerHTML = `${icon}<span>${label}</span>`;
+    btn.innerHTML = opts.iconOnly ? icon : `${icon}<span>${label}</span>`;
     btn.style.cssText = `
-      background: ${isHighlight ? '#0284c7' : '#1f2937'};
-      color: ${isHighlight ? '#ffffff' : '#cbd5e1'};
-      border: 1px solid #374151;
-      padding: 4px 9px;
+      background: ${palette.bg};
+      color: ${palette.color};
+      border: 1px solid ${palette.border};
+      padding: ${opts.iconOnly ? '5px 7px' : '4px 9px'};
       font-size: 12px;
       border-radius: 4px;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 4px;
       white-space: nowrap;
-      transition: all 0.15s ease;
+      flex: 0 0 auto;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
     `;
 
     btn.addEventListener('mouseenter', () => {
       if (!btn.classList.contains('active')) btn.style.background = '#334155';
     });
     btn.addEventListener('mouseleave', () => {
-      if (!btn.classList.contains('active')) btn.style.background = isHighlight ? '#0284c7' : '#1f2937';
+      if (!btn.classList.contains('active')) btn.style.background = btn.dataset.baseBg || '#1f2937';
     });
     btn.addEventListener('click', onClick);
 
@@ -490,24 +562,57 @@ export class OpenMedViewer {
     return wrap;
   }
 
+  /** 统一设置按钮的激活 / 常规样式（仅工具按钮使用） */
+  private applyButtonState(btn: HTMLButtonElement | null, active: boolean): void {
+    if (!btn) return;
+    if (active) {
+      btn.classList.add('active');
+      btn.style.background = '#00e5ff';
+      btn.style.color = '#0b0f19';
+      btn.style.borderColor = '#00e5ff';
+      btn.style.fontWeight = '600';
+    } else {
+      btn.classList.remove('active');
+      btn.style.background = btn.dataset.baseBg || '#1f2937';
+      btn.style.color = btn.dataset.baseColor || '#cbd5e1';
+      btn.style.borderColor = btn.dataset.baseBorder || '#374151';
+      btn.style.fontWeight = 'normal';
+    }
+  }
+
+  /** 同步工具栏：当前工具高亮 + 提示文案 + 反相/翻转/3D 等状态按钮 */
   private updateToolbarActiveState(): void {
-    const btns = this.topToolbar.querySelectorAll('.med-tool-btn');
-    btns.forEach((b) => {
-      const el = b as HTMLElement;
-      if (el.classList.contains(`tool-${this.activeTool}`)) {
-        el.classList.add('active');
-        el.style.background = '#00e5ff';
-        el.style.color = '#0b0f19';
-        el.style.borderColor = '#00e5ff';
-        el.style.fontWeight = 'bold';
-      } else {
-        el.classList.remove('active');
-        el.style.color = '#cbd5e1';
-        el.style.background = '#1f2937';
-        el.style.borderColor = '#374151';
-        el.style.fontWeight = 'normal';
-      }
-    });
+    this.toolButtons.forEach((btn, tool) => this.applyButtonState(btn, tool === this.activeTool));
+
+    if (this.toolHint) {
+      const activeBtn = this.toolButtons.get(this.activeTool);
+      this.toolHint.textContent = activeBtn?.dataset.hint || '';
+    }
+
+    this.syncToggleButtons();
+  }
+
+  /** 同步「有状态」按钮（反相 / 水平翻转 / 3D），避免视觉与实际状态脱节 */
+  private syncToggleButtons(): void {
+    if (!this.layoutManager) return;
+    const state = this.layoutManager.getActiveViewport()?.getState();
+
+    const invert = !!state?.invert;
+    if (invert !== this.toggleStateCache.invert) {
+      this.toggleStateCache.invert = invert;
+      this.applyButtonState(this.btnInvert, invert);
+    }
+
+    const flipH = !!state?.flipH;
+    if (flipH !== this.toggleStateCache.flipH) {
+      this.toggleStateCache.flipH = flipH;
+      this.applyButtonState(this.btnFlipH, flipH);
+    }
+
+    if (this.is3DMode !== this.toggleStateCache.is3D) {
+      this.toggleStateCache.is3D = this.is3DMode;
+      this.applyButtonState(this.btn3D, this.is3DMode);
+    }
   }
 
   // ==================== 底部 Cine 控制条 ====================
@@ -586,8 +691,7 @@ export class OpenMedViewer {
     `;
 
     header.querySelector('.clear-meas-btn')?.addEventListener('click', () => {
-      this.getActiveViewport().clearMeasurements();
-      this.updateMeasurementsList();
+      this.clearAllMeasurements();
     });
 
     const measContainer = document.createElement('div');
@@ -640,6 +744,28 @@ export class OpenMedViewer {
       });
       container.appendChild(card);
     });
+  }
+
+  /**
+   * 清空当前序列的全部标注（覆盖所有视口），并同步快照，避免切回序列时被旧数据还原
+   */
+  private clearAllMeasurements(): void {
+    const viewports = this.layoutManager.getViewports();
+    const total = viewports.reduce((sum, vp) => sum + vp.getMeasurements().length, 0);
+
+    if (total === 0) {
+      alert('当前序列暂无测量标注');
+      return;
+    }
+
+    if (!confirm(`确定清空当前序列的 ${total} 条测量标注吗？该操作不可撤销。`)) return;
+
+    viewports.forEach((vp) => vp.clearMeasurements());
+
+    const group = this.seriesGroups[this.activeSeriesIndex];
+    if (group) this.seriesMeasurements.delete(group.key);
+
+    this.updateMeasurementsList();
   }
 
   private updateMetadataInspector(): void {
@@ -1401,15 +1527,14 @@ export class OpenMedViewer {
     }
   }
 
-  private toggle3DVtkMode(btn: HTMLElement): void {
+  private toggle3DVtkMode(btn: HTMLButtonElement): void {
     if (!this.is3DMode) {
       if (this.currentImages.length < 2) {
         alert('3D 体绘制重建需要至少 2 层以上的连续切片数据！');
         return;
       }
       this.is3DMode = true;
-      btn.textContent = '🩺 返回 2D 阅片';
-      btn.style.background = '#e11d48';
+      btn.title = '返回 2D 阅片';
 
       // 切换中央视口为 VTK 渲染容器
       this.viewportGridContainer.innerHTML = '';
@@ -1418,16 +1543,17 @@ export class OpenMedViewer {
     } else {
       this.exit3DMode(btn);
     }
+
+    this.syncToggleButtons();
   }
 
   /**
    * 退出 3D 重建模式，恢复 2D 布局视口
    */
-  private exit3DMode(btn: HTMLElement | null = this.btn3D): void {
+  private exit3DMode(btn: HTMLButtonElement | null = this.btn3D): void {
     this.is3DMode = false;
     if (btn) {
-      btn.textContent = '🧊 3D VTK.js 重建';
-      btn.style.background = '#6366f1';
+      btn.title = '3D 体积重建';
     }
 
     if (this.vtkEngine) {
@@ -1435,16 +1561,28 @@ export class OpenMedViewer {
       this.vtkEngine = null;
     }
 
+    // 重建视口后需要重新应用当前交互工具，否则会静默回到默认调窗
     this.layoutManager.setLayout(this.layoutManager.getLayout());
+    this.layoutManager.setActiveTool(this.activeTool);
     this.layoutManager.setImagesForAll(this.currentImages);
     const group = this.seriesGroups[this.activeSeriesIndex];
     if (group) this.restoreMeasurements(group);
     this.updateMetadataInspector();
+    this.updateMeasurementsList();
+    this.syncToggleButtons();
   }
 
   private bindEvents(): void {
     window.addEventListener('resize', () => {
       this.layoutManager.getViewports().forEach((vp) => vp.render());
+    });
+
+    // 键盘 / 右键菜单等途径改变视口状态时，同步反相、翻转等按钮高亮
+    this.events.on('viewportUpdated', () => this.syncToggleButtons());
+    this.events.on('layoutChanged', () => {
+      this.layoutManager.setActiveTool(this.activeTool);
+      this.updateToolbarActiveState();
+      this.updateMeasurementsList();
     });
   }
 
