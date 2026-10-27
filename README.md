@@ -5,14 +5,21 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178c6)
 ![Vite](https://img.shields.io/badge/Vite-5.4-646cff)
-![DICOM](https://img.shields.io/badge/DICOM-Part--10%20%7C%20DICOMweb-00e5ff)
+![Status](https://img.shields.io/badge/status-preview-orange)
 
-OpenMed Viewer 以纯 TypeScript 实现核心引擎，不绑定任何 UI 框架，内置**统一多云与本地数据源适配层**：只要填写配置，即可直连华为云 OBS、阿里云 OSS、私有化 MinIO/Ceph/S3、院内 PACS DICOMweb，或直接拖入本地 DICOM / ZIP 影像。工具栏集成了调窗、测距、角度、ROI、探针、多画幅排版、伪彩、3D/MPR 与 Cine 播放等专业诊断工具。
+> **项目状态：开发预览版（v1.0.0-preview）**
+>
+> 核心链路（DICOM 解析 → Canvas 渲染 → 序列分组 → 测量 / Cine / 截图）已实现并可用内置合成 CT 数据跑通；
+> 但**部分能力尚未在真实环境中验证**，包括压缩 DICOM 解码、云存储鉴权、DICOMweb 对接、3D 体绘制与 ZIP 多序列导入。
+> 这些功能的接口与行为仍可能调整，详见 [功能成熟度](#功能成熟度)。项目目前**没有自动化测试**，请勿直接用于临床诊断。
+
+OpenMed Viewer 以纯 TypeScript 实现核心引擎，不绑定任何 UI 框架，内置**统一多云与本地数据源适配层**（华为云 OBS、阿里云 OSS、私有化 MinIO/Ceph/S3、院内 PACS DICOMweb，以及本地 DICOM / ZIP 影像），工具栏集成了调窗、测距、角度、ROI、探针、多画幅排版、伪彩与 Cine 播放等专业诊断工具。
 
 ---
 
 ## 目录
 
+- [功能成熟度](#功能成熟度)
 - [特性速览](#特性速览)
 - [支持的影像格式](#支持的影像格式)
 - [界面布局](#界面布局)
@@ -35,38 +42,75 @@ OpenMed Viewer 以纯 TypeScript 实现核心引擎，不绑定任何 UI 框架�
 
 ---
 
+## 功能成熟度
+
+状态说明：
+
+- **已实现**：代码路径完整，使用内置合成数据即可跑通；
+- **实验性**：代码已实现但依赖外部环境（真实压缩数据 / 云服务 / GPU / PACS），尚未完成系统验证；
+- **部分支持**：仅在特定条件下可用；
+- **计划中**：仅保留类型或接口，尚未实现。
+
+| 模块 | 状态 | 说明 |
+| :--- | :--- | :--- |
+| 未压缩 DICOM 解析（Part 10、显式/隐式 VR、16/32 位） | 已实现 | `dicom-parser` + 自研解析兜底 |
+| Canvas 2D 渲染、调窗、平移/缩放/旋转/翻转/反相、伪彩 | 已实现 | 主渲染链路，不依赖 Cornerstone |
+| 多画幅排版（1×1 / 1×2 / 2×1 / 2×2） | 已实现 | 拓扑切换会重建视口 |
+| 序列分组 + 左侧缩略图卡片 + 右侧切片滚动条 | 已实现 | 按 `SeriesInstanceUID` 分组 |
+| 测量工具（测距 / 角度 / 矩形 ROI / 椭圆 ROI / 探针 / 箭头） | 已实现 | 支持控制点拖拽重算、整体平移、删除 |
+| Cine 播放、FPS 调节、底部进度条 | 已实现 | |
+| 视口截图导出（PNG / JPEG） | 已实现 | 工具栏「导出截图」 |
+| 测量数据 JSON 导出 | 部分支持 | 仅有 `ImageExporter.exportMeasurementsJson()` API，工具栏暂无入口 |
+| 压缩 DICOM 解码（JPEG / JPEG-LS / J2K / HTJ2K / JPEG-XL / RLE） | 实验性 | 依赖 Cornerstone WASM 解码器，**尚未在真实压缩序列上验证** |
+| 彩色 / 多帧 DICOM | 实验性 | 依赖 Cornerstone 兜底路径 |
+| 非 DICOM 图片（PNG / JPEG / BMP / WebP） | 部分支持 | 走浏览器 `<img>` 解码 |
+| TIFF 图片 | 计划中 | 扩展名已识别，但浏览器无法原生解码，实际不可用 |
+| ZIP / ZIP64 / 嵌套 ZIP 导入 | 实验性 | 解析器已实现，多序列场景未系统验证；加密 ZIP 不支持 |
+| 华为云 OBS / 阿里云 OSS / MinIO-S3 | 实验性 | **当前仅支持公开读或前置网关直读，AK/SK 签名尚未实现** |
+| DICOMweb（QIDO-RS / WADO-RS） | 实验性 | 请求链路已实现，但查询失败会回退为模拟实例，未对接真实 PACS 验证 |
+| 3D 体绘制（VTK.js Volume Rendering） | 实验性 | 仅体绘制；**MPR 正交重建与 MIP 尚未实现** |
+| 多视口序列同步滚动 | 计划中 | `LayoutManager` 内已有同步逻辑，但默认关闭且 UI 未暴露 |
+| 内置合成颅脑 CT（16 层） | 已实现 | 演示与自测数据源 |
+| npm 包发布 | 计划中 | 包尚未发布到 npm registry |
+
+> 上表会随验证进度更新。若你在真实环境中验证了某项能力，欢迎提交 Issue / PR 反馈结果。
+
+---
+
 ## 特性速览
 
 | 分类 | 能力 |
 | :--- | :--- |
-| 多引擎架构 | Cornerstone3D 临床级 2D 堆栈渲染、VTK.js 3D / MPR 科学重建、纯 TS + Canvas 轻量快速通道（300ms 级启动） |
-| DICOM 解析 | `dicom-parser` + `dcmjs`：Part 10、显式/隐式 VR、16/32 位有符号与无符号像素、Rescale Slope/Intercept、PixelSpacing 等完整元数据 |
-| 压缩解码 | `@cornerstonejs/dicom-image-loader` 按需加载 WASM 解码器：JPEG Baseline/Lossless、JPEG-LS、JPEG 2000、HTJ2K、JPEG-XL、RLE |
-| 数据源 | 华为云 OBS、阿里云 OSS、MinIO/S3、DICOMweb（WADO-RS / WADO-URI / QIDO-RS）、本地文件、ZIP 压缩包、直链 URL、内置合成 CT |
+| 渲染引擎 | 自研 Canvas 2D 渲染核心；VTK.js 体绘制为可选附加能力（实验性） |
+| DICOM 解析 | `dicom-parser` + `dcmjs`：Part 10、显式/隐式 VR、16/32 位有符号与无符号像素、Rescale Slope/Intercept、PixelSpacing 等元数据 |
+| 压缩解码 | 懒加载 Cornerstone `dicom-image-loader`：JPEG Baseline/Lossless、JPEG-LS、JPEG 2000、HTJ2K、JPEG-XL、RLE（实验性） |
+| 数据源 | 华为云 OBS、阿里云 OSS、MinIO/S3、DICOMweb、本地文件、ZIP 压缩包、直链 URL、内置合成 CT（云与 DICOMweb 为实验性） |
 | 影像工具 | 调窗（含脑窗/骨窗/肺窗等预设）、平移、缩放、旋转、翻转、反相、Cine 播放 |
-| 测量标注 | 测距（mm）、角度（°）、矩形/椭圆 ROI（mm²、Mean/Min/Max/StdDev HU）、探针 HU、箭头标注；支持拖动控制点重算、整体平移、删除 |
-| 视图能力 | 1×1 / 1×2 / 2×1 / 2×2 多画幅、跨视口序列同步滚动、伪彩 LUT（Grayscale / Hot Iron / Rainbow / PET 反相 / Bone） |
+| 测量标注 | 测距（mm）、角度（°）、矩形/椭圆 ROI（mm²、Mean/Min/Max/StdDev HU）、探针 HU、箭头标注 |
+| 视图能力 | 1×1 / 1×2 / 2×1 / 2×2 多画幅、伪彩 LUT（Grayscale / Hot Iron / Rainbow / PET 反相 / Bone） |
 | 序列组织 | 按 `BodyPartExamined` → `SeriesDescription` → `Modality + SeriesNumber` 分组，左侧缩略图卡片切换，各序列测量标注独立保存/恢复 |
-| 导出 | 视口 + 标注高保真导出 PNG/JPEG，测量数据导出标准 JSON 报告 |
+| 导出 | 视口 + 标注高保真导出 PNG/JPEG；测量数据可导出 JSON（API 调用） |
+
+> 体积与启动性能尚未做系统基准测试，暂不提供具体数值承诺。
 
 ---
 
 ## 支持的影像格式
 
-| 类别 | 支持情况 |
-| :--- | :--- |
-| 未压缩 DICOM | Implicit VR LE / Explicit VR LE / Explicit VR BE / Deflated，8/16/32 位，有符号与无符号，Float Pixel Data |
-| 压缩 DICOM | JPEG Baseline（8/12bit）、JPEG Lossless（.57/.70）、JPEG-LS、JPEG 2000、HTJ2K、JPEG-XL、RLE —— 由 Cornerstone WASM 解码器处理 |
-| 彩色 / 多帧 | RGB / YBR / PALETTE COLOR 自动转灰度显示；多帧 DICOM（`NumberOfFrames`）自动拆分为多张 |
-| 非 DICOM | PNG / JPEG / BMP / WebP / TIFF |
-| 压缩包 | ZIP（Store/Deflate、ZIP64、嵌套 ZIP、无扩展名 DICOM 内容嗅探、自动跳过 DICOMDIR/文本/系统文件） |
+| 类别 | 支持情况 | 状态 |
+| :--- | :--- | :--- |
+| 未压缩 DICOM | Implicit VR LE / Explicit VR LE / Explicit VR BE / Deflated，8/16/32 位，有符号与无符号 | 已实现 |
+| 压缩 DICOM | JPEG Baseline（8/12bit）、JPEG Lossless（.57/.70）、JPEG-LS、JPEG 2000、HTJ2K、JPEG-XL、RLE —— 由 Cornerstone WASM 解码器处理 | 实验性，未验证 |
+| 彩色 / 多帧 | RGB / YBR / PALETTE COLOR 走 Cornerstone 兜底；多帧 DICOM（`NumberOfFrames`）自动拆分 | 实验性，未验证 |
+| 非 DICOM | PNG / JPEG / BMP / WebP（浏览器原生解码） | 部分支持 |
+| 非 DICOM（TIFF） | 扩展名可识别，但缺少解码器，实际不可用 | 计划中 |
+| 压缩包 | ZIP（Store/Deflate、ZIP64、嵌套 ZIP、无扩展名 DICOM 嗅探、跳过 DICOMDIR/文本/系统文件） | 实验性，未验证 |
 
 > WASM 解码器默认从 `<base>/wasm/` 读取，构建时由 `scripts/copy-wasm.mjs` 复制到 `dist/wasm/`。
 > 部署在子路径或 CDN 时，请调用 `CornerstoneImageDecoder.setWasmBasePath('/static/wasm/')` 指定实际路径。
 
 > 关于 `@cornerstonejs/streaming-image-volume-loader`：该独立包仅适配 Cornerstone3D v1（`peer @cornerstonejs/core@^1.86`）；
-> 自 v2 起流式体积加载已并入 `@cornerstonejs/core`（`cornerstoneStreamingImageVolumeLoader` / `volumeLoader.createAndCacheVolume`）。
-> 本项目使用 core v5，因此未引入该 v1 专属包，3D 重建由内置 VTK.js 引擎基于解码后的体数据完成。
+> 自 v2 起流式体积加载已并入 `@cornerstonejs/core`。本项目使用 core v5，因此未引入该 v1 专属包。
 
 ---
 
@@ -89,7 +133,7 @@ OpenMed Viewer 以纯 TypeScript 实现核心引擎，不绑定任何 UI 框架�
 ```
 
 - **左侧序列栏**：每个序列一张卡片，显示该序列首帧缩略图、部位名称（`BodyPartExamined` / `SeriesDescription`）、模态、序列号与层数；当前序列以青色描边高亮，点击即切换。
-- **右侧切片滚动条**：`▲` / 拖动滑块 / `▼` 三层交互，配合 `当前层/总层数` 显示；在滚动条上滚动滚轮同样翻层。
+- **右侧切片滚动条**：`▲` / 拖动滑块 / `▼` 三层交互，配合 `当前层/总层数` 显示；在滚动条上滚动滚轮同样翻层；仅一层时自动隐藏。
 - **右侧信息栏**：实时展示患者、检查、序列元数据与当前序列的测量记录，可单条删除或一键清空。
 
 ---
@@ -114,26 +158,23 @@ npx tsc --noEmit
 npm run build
 ```
 
-开发服务器启动后会自动载入内置的 16 层高保真合成颅脑 CT 序列（含颅骨、脑实质、脑室 CSF 与模拟病灶 HU 值），无需任何网络或云配置即可体验全部功能。
+开发服务器启动后会自动载入内置的 16 层高保真合成颅脑 CT 序列（含颅骨、脑实质、脑室 CSF 与模拟病灶 HU 值），无需任何网络或云配置即可体验基础功能。
 
 ---
 
 ## 安装方式
 
-### 通过 npm（包发布后）
+### 通过 npm（包尚未发布）
+
+> `@open-med/viewer` **当前未发布到 npm registry**，以下命令暂时不可用；发布后会更新本节。
 
 ```bash
 npm install @open-med/viewer
-# 或
 pnpm add @open-med/viewer
-# 或
 yarn add @open-med/viewer
-
-# 使用 Vue / React 子路径入口
-npm install @open-med/viewer
 ```
 
-### 从源码构建并本地引用
+### 从源码构建并本地引用（当前推荐）
 
 ```bash
 npm run build          # 产物在 dist/
@@ -329,14 +370,22 @@ onUnmounted(() => destroy());
 
 | `type` | 必填字段 | 选填字段 | 说明 |
 | :--- | :--- | :--- | :--- |
-| `huaweiObs` | `endpoint`, `bucket`, `accessKeyId`, `secretAccessKey` | `securityToken`, `prefix`, `keys`, `usePresignedUrls` | 华为云对象存储 OBS |
-| `aliyunOss` | `region`, `bucket`, `accessKeyId`, `accessKeySecret` | `endpoint`, `stsToken`, `prefix`, `keys`, `usePresignedUrls` | 阿里云对象存储 OSS |
-| `privateS3` | `endpoint`, `bucket`, `accessKeyId`, `secretAccessKey` | `region`, `pathStyle`, `prefix`, `keys` | 私有云 MinIO / Ceph / S3 兼容存储 |
-| `dicomWeb` | `wadoRoot` | `qidoRoot`, `studyInstanceUID`, `seriesInstanceUID`, `headers` | 院内 PACS（WADO-RS / QIDO-RS） |
+| `huaweiObs` | `endpoint`, `bucket` | `accessKeyId`\*, `secretAccessKey`\*, `securityToken`, `prefix`, `keys` | 华为云对象存储 OBS（实验性） |
+| `aliyunOss` | `region`, `bucket` | `accessKeyId`\*, `accessKeySecret`\*, `stsToken`, `endpoint`, `prefix`, `keys` | 阿里云对象存储 OSS（实验性） |
+| `privateS3` | `endpoint`, `bucket` | `accessKeyId`\*, `secretAccessKey`\*, `region`, `pathStyle`, `prefix`, `keys` | 私有云 MinIO / Ceph / S3（实验性） |
+| `dicomWeb` | `wadoRoot` | `qidoRoot`, `studyInstanceUID`, `seriesInstanceUID`, `headers` | 院内 PACS（WADO-RS / QIDO-RS，实验性） |
 | `local` | `files`（`File[]` 或 `FileList`） | - | 本地拖拽 / 文件选择，`.zip` 自动解包 |
-| `zip` | `file`（File/Blob）或 `url` | `headers`, `recursive`（默认 `true`）, `maxImages`（默认 `1000`） | ZIP 影像压缩包多序列导入 |
+| `zip` | `file`（File/Blob）或 `url` | `headers`, `recursive`（默认 `true`）, `maxImages`（默认 `1000`） | ZIP 影像压缩包多序列导入（实验性） |
 | `directUrl` | `urls` | `headers` | 直链影像（DICOM / PNG / JPEG …） |
 | `syntheticDemo` | - | `sliceCount`（默认 16）, `modality`（`CT` / `MR`） | 内置合成 CT 容积，用于演示与自测 |
+
+> \* **AK/SK 字段目前仅作为配置占位，尚未参与请求签名。** 当前实现为匿名 HTTP GET，因此：
+>
+> - 对象必须允许**公开读**，或
+> - 由后端生成**预签名 URL** 后走 `directUrl` 传入，或
+> - 通过前置网关 / 反向代理完成鉴权（浏览器侧无需签名）。
+>
+> `usePresignedUrls` 为预留字段，当前不生效。浏览器端签名（SigV4 / OBS 签名）在计划中。
 
 ### 示例
 
@@ -406,7 +455,7 @@ console.log('已加载影像数量：', images.length);
 
 加载完成后会自动按序列分组、渲染左侧序列卡片、刷新右侧元数据面板与底部 Cine 范围。
 
-> **安全提示**：AK/SK 等凭证不要写进前端生产包。建议由后端签发临时凭证（`securityToken` / `stsToken`）或预签名 URL（`usePresignedUrls: true`）后再下发到浏览器。
+> **安全提示**：不要把长期 AK/SK 写进前端生产包。即使后续支持浏览器端签名，也建议由后端签发临时凭证或预签名 URL 后再下发到浏览器。
 
 ---
 
@@ -501,7 +550,9 @@ viewer.switchSeries(1);
 
 ### 视口方法 `Viewport`
 
-`setImages(images, initialIndex?)`、`setImageIndex(i)`、`nextImage()` / `prevImage()`、`scrollSlices(steps)`、`getState()`、`getCurrentImage()`、`setWindowLevel(wc, ww)`、`setZoom`、`setPan`、`setRotation`、`toggleFlipH/V()`、`toggleInvert()`、`setColormap(c)`、`rotate90()`、`resetView()`、`zoomAt(x, y, factor)`、`startCine(fps)` / `stopCine()` / `isCineActive()`、`addMeasurement` / `updateMeasurement` / `removeMeasurement` / `clearMeasurements` / `getMeasurements` / `setMeasurements`、`getCanvas()`、`render()`、`destroy()`。
+`setImages(images, initialIndex?)`、`setImageIndex(i)`、`nextImage()` / `prevImage()`、`scrollSlices(steps)`、`getState()`、`getCurrentImage()`、`setWindowLevel(wc, ww)`、`setZoom`、`setPan`、`setRotation`、`toggleFlipH/V()`、`toggleInvert()`、`setColormap(c)`、`resetView()`、`zoomAt(x, y, factor)`、`startCine(fps)` / `stopCine()` / `isCineActive()`、`addMeasurement` / `updateMeasurement` / `removeMeasurement` / `clearMeasurements` / `getMeasurements` / `setMeasurements`、`getCanvas()`、`render()`、`destroy()`。
+
+> `CornerstoneAdapter`（`src/engine/CornerstoneEngine.ts`）提供基于 Cornerstone3D 的视口挂载能力，但当前 UI 未启用（2D 渲染走内置 Canvas 引擎），属实验性代码。
 
 ### 事件 `ViewerEvents`
 
@@ -530,6 +581,8 @@ type ToolType =
 type ColormapType = 'grayscale' | 'hot-iron' | 'rainbow' | 'pet' | 'bone';
 ```
 
+> 类型中枚举的工具 / 排版项并非全部已实现：工具栏当前暴露调窗、平移、缩放、旋转、翻转、反相、测距、角度、矩形 ROI、椭圆 ROI、探针、箭头与 4 种排版；`cobbAngle`、`freehandRoi`、`text`、`magnify`、`crosshair`、`eraser`、`1x3`、`3x3` 等尚无 UI 入口。
+
 ---
 
 ## 项目结构
@@ -549,7 +602,7 @@ type ColormapType = 'grayscale' | 'hot-iron' | 'rainbow' | 'pet' | 'bone';
 │   ├── ui/                   # MedViewerUI（工具栏、序列卡片、切片滚动条、信息栏）
 │   ├── vue/                  # Vue 3 适配层
 │   └── react/                # React 适配层
-├── public/                   # 开发期 WASM 解码器
+├── public/wasm/              # 开发期 WASM 解码器
 ├── scripts/copy-wasm.mjs     # 构建时复制 WASM 到 dist/wasm
 ├── index.html                # 开发体验页
 ├── vite.config.ts            # 库构建配置（ESM + CJS）
@@ -568,7 +621,7 @@ npx tsc --noEmit
 # 完整构建：主入口 + 子路径 + 类型声明 + WASM
 npm run build
 
-# 发布到 npm
+# 发布到 npm（包当前尚未发布，命令仅作参考）
 npm publish --access public
 ```
 
@@ -592,14 +645,20 @@ npm publish --access public
 **Q：容器一片空白 / 视口尺寸为 0？**
 确保挂载容器有明确宽高（如 `width: 100vw; height: 100vh`），并在 DOM 就绪后再实例化（Vue `onMounted`、React `useEffect`）。
 
+**Q：填写了 AK/SK，为什么仍然 403？**
+当前版本尚未实现浏览器端签名（SigV4 / OBS 签名），AK/SK 字段不参与请求。请使桶公开可读、改用后端预签名 URL（`directUrl`），或通过网关代理鉴权。
+
 **Q：压缩 DICOM（JPEG2000 / JPEG-LS 等）显示不出来？**
-确认 `dist/wasm/` 已随静态资源一起部署。若部署在子路径或 CDN，调用 `CornerstoneImageDecoder.setWasmBasePath('/your/path/wasm/')`。
+确认 `dist/wasm/` 已随静态资源一起部署。若部署在子路径或 CDN，调用 `CornerstoneImageDecoder.setWasmBasePath('/your/path/wasm/')`。该链路尚未在真实压缩序列上验证，如遇问题请附样本与浏览器日志提 Issue。
+
+**Q：DICOMweb 查询返回的是假数据？**
+`DicomWebAdapter` 在 QIDO-RS 查询失败且配置了 `studyInstanceUID` + `seriesInstanceUID` 时会回退生成占位实例，便于 UI 联调。生产环境请确认 `wadoRoot` / `qidoRoot` 可访问并配置正确的 `headers`。
+
+**Q：3D 按钮能看到 MPR 轴状位/冠状位/矢状位切面吗？**
+暂无。当前 3D 为 VTK.js 体绘制（Volume Rendering），MPR 正交重建与 MIP 尚未实现。另外该功能需要 WebGL 支持，且至少 2 层切片。
 
 **Q：宿主项目使用 Vite 时构建报 `extends undefined` / 白屏？**
 `@cornerstonejs/core → @kitware/vtk.js → xmlbuilder2` 在模块顶层依赖 Node 的 `events` / `url`，需要为这两个模块提供浏览器 shim（本仓库见 `src/shims/`）。在宿主项目中可配置 `resolve.alias` 指向对应的 polyfill。
-
-**Q：一张影像都没有切换时报错 `index out of range`？**
-切片索引会被自动裁剪到有效范围（0 ~ total-1），但请确保已通过 `loadImagesFromConfig` 或 `initialConfig` 完成加载后再调用 `switchSeries` / `setImageIndex`。
 
 **Q：如何禁用某个工具栏按钮或整个工具栏？**
 `showToolbar: false` 可隐藏顶部工具栏；按钮级别可通过实例的 `setActiveTool` 控制当前工具，或在宿主侧自行渲染控制条。
@@ -612,6 +671,8 @@ npm publish --access public
 2. 提交前请确保 `npx tsc --noEmit` 与 `npm run build` 均通过
 3. 提交信息遵循 Conventional Commits（`feat:` / `fix:` / `docs:` / `refactor:` …）
 4. 发起 Pull Request，描述改动动机、实现要点与验证方式
+
+特别欢迎以下方向的验证反馈：真实压缩 DICOM 序列、院内 PACS DICOMweb、各云厂商私有桶鉴权、ZIP 多序列导入、VTK 3D 体绘制在不同 GPU 上的兼容性。
 
 ---
 
